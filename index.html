@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8" />
+
+  <title>HFT IPR GraphQL</title>
+
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <script async src="https://production-assets.codepen.io/assets/embed/ei.js"></script>
+</head>
+
+<body>
+  <div class="reveal">
+    <div class="slides">
+      <section data-background-image="https://media.giphy.com/media/Nns5Urv6xCo8SUsgKk/giphy.gif">
+        <h1 class="title">IPR</h1>
+        <h3 class="title">GraphQL</h3>
+      </section>
+
+      <!-- GraphQL -->
+      <section>
+        <section data-auto-animate data-background-size="cover"
+          data-background-image="https://media.giphy.com/media/l3vRacqRRQENTCIpy/giphy.gif">
+          <h3 class="title">GrapQL</h3>
+        </section>
+        <section data-auto-animate>
+          <h3>GrapQL</h3>
+          <p>GraphQL ist eine Abfragesprache für APIs und eine Laufzeitumgebung für die Erfüllung dieser Abfragen mit
+            vorhandenen Daten. GraphQL bietet eine vollständige und verständliche Beschreibung der Daten in einer
+            API, gibt Kunden die Möglichkeit, genau das abzufragen, was sie benötigen, und nicht mehr, erleichtert die
+            Weiterentwicklung von APIs im Laufe der Zeit und bietet leistungsstarke Entwicklerwerkzeuge.
+          </p>
+        </section>
+
+        <section data-auto-animate>
+          <h3>Hole nur das was du brauchst</h3>
+          <pre><code class="gql" data-trim data-noescape data-line-numbers><script type="text/template">
+            {
+              hero {
+                name
+                height
+              }
+            }
+          </script></code></pre>
+        </section>
+        <section data-auto-animate>
+          <h3>Mehrere Ressourcen mit einer Schnittstelle</h3>
+          <p>
+            Unser Backend muss nur noch eine einzige Schnittstelle zur Verfügung stellen der rest wird intern geregelt.
+          </p>
+        </section>
+        <section data-auto-animate>
+          <h3>Typisierung</h3>
+          <small>
+            GraphQL verwendet Typen um Responses und andere Entitäten "vorhersehbar" zu machen.
+          </small>
+          <pre><code class="gql" data-trim data-noescape data-line-numbers><script type="text/template">
+            type Query {
+              hero: Character
+            }
+            
+            type Character {
+              name: String
+              friends: [Character]
+              homeWorld: Planet
+              species: Species
+            }
+            
+            type Planet {
+              name: String
+              climate: String
+            }
+            
+            type Species {
+              name: String
+              lifespan: Int
+              origin: Planet
+            }
+          </script></code></pre>
+        </section>
+      </section>
+
+      <!-- Backend: Query -->
+      <section>
+        <section data-auto-animate data-background-size="cover"
+          data-background-image="https://media.giphy.com/media/5ndfKr0Nv92LkWrKpU/giphy.gif">
+          <h3 class="title">GraphQL mit Apollo</h3>
+          <small class="white">npm i apollo-server-express @graphql-tools/schema-merging @graphql-tools/load-files
+            @graphql-tools/merge @graphql-tools/utils @graphql-tools/schema</small>
+        </section>
+        <section data-auto-animate>
+          <h3>package.json</h3>
+          <pre><code class="js" data-trim data-noescape data-line-numbers><script type="text/template">
+            "build": "swc src -d dist --copy-files",
+          </script></code></pre>
+        </section>
+        <section data-auto-animate>
+          <h3>index.js</h3>
+          <pre><code class="js" data-trim data-noescape data-line-numbers="7,10,11"><script type="text/template">
+            /* istanbul ignore file */
+            import "dotenv/config";
+            import env from "./config/env.js";
+            import app from "./config/express";
+            import consola from "consola";
+            import knex from "./config/knex";
+            import startApolloServer from "./config/apollo";
+
+            const server = app.listen(env.port, async () => {
+              const apollo = await startApolloServer();
+              consola.info(`🚀 Server listening on port http://localhost:${env.port}${apollo.graphqlPath}`);
+            });
+
+            process.on("SIGTERM", shutdown("SIGTERM")).on("SIGINT", shutdown("SIGINT")).on("uncaughtException", shutdown("uncaughtException"));
+
+            function shutdown(signal) {
+              return (err) => {
+                consola.info(`${signal} signal received. Going to close the server...`);
+
+                server.close(() => {
+                  consola.info("Http server closed successfully.");
+                });
+                knex.destroy();
+
+                if (err) {
+                  consola.error(err.stack || err);
+                }
+                setTimeout(() => {
+                  consola.info("...waited 5s, exiting.");
+                  process.exit(err ? 1 : 0);
+                }, 5000).unref();
+              };
+            }
+
+            export default server;
+          </script></code></pre>
+        </section>
+        <section data-auto-animate>
+          <h3>jest.setup.js</h3>
+          <pre><code class="js" data-trim data-noescape data-line-numbers="4,6,7,10"><script type="text/template">
+            import "dotenv/config";
+            import knex from "./src/config/knex";
+
+            beforeAll(async () => {
+              global.app = require("./src/config/express").default;
+              const startApolloServer = require("./src/config/apollo").default;
+              await startApolloServer();
+            });
+            afterAll(async () => {
+              await knex.destroy();
+            });
+        
+          </script></code></pre>
+        </section>
+        <section data-auto-animate>
+          <h3>apollo.js</h3>
+          <pre><code class="js" data-trim data-noescape data-line-numbers><script type="text/template">
+            import { makeExecutableSchema } from "@graphql-tools/schema";
+            import { loadFilesSync } from "@graphql-tools/load-files";
+            import { mergeResolvers } from "@graphql-tools/merge";
+            import { mergeTypeDefs } from "@graphql-tools/schema-merging";
+            import { ApolloServer } from "apollo-server-express";
+            import path from "path";
+            import app from "./express";
+            import StoryRepository from "../story/story.repository";
+            import isAuthenticatedDirective from "../directive/isAuthenticated.directive";
+            import userContext from "../apolloMiddleware/userContext";
+
+            const typesArray = loadFilesSync(path.join(__dirname, "../"), { recursive: true, extensions: [".graphql"] });
+            const resolversArray = loadFilesSync(path.join(__dirname, "../**/*.resolver.*"));
+
+            export const dataSources = () => ({
+              storyRepository: new StoryRepository(),
+            });
+
+            let schema = makeExecutableSchema({
+              typeDefs: mergeTypeDefs(typesArray),
+              resolvers: mergeResolvers(resolversArray),
+            });
+
+            schema = isAuthenticatedDirective(schema, "isAuthenticated");
+
+            const createContext = async ({ req }) => {
+              return {
+                user: await userContext(req),
+              };
+            };
+
+            export default async function startApolloServer() {
+              const server = new ApolloServer({ schema, dataSources, context: createContext });
+
+              await server.start();
+              server.applyMiddleware({ app });
+
+              return server;
+            }
+          </script></code></pre>
+        </section>
+        <section data-auto-animate>
+          <h3>story.graphql</h3>
+          <pre><code class="gql" data-trim data-noescape data-line-numbers><script type="text/template">
+            type Story {
+              uuid: ID!
+              title: String!
+              imageUrl: String!
+              created_at: String!
+              updated_at: String!
+            }
+            
+            type StoryResult {
+              success: Boolean!
+              errors: [String]
+              story: Story
+            }
+            
+            type StoriesResult {
+              success: Boolean!
+              errors: [String]
+              stories: [Story!]
+            }
+            
+            input CreateStoryInput {
+              title: String!
+              imageUrl: String!
+            }
+            
+            type Query {
+              getRandomStory: StoryResult! @isAuthenticated
+            }
+            
+            type Mutation {
+              createStory(input: CreateStoryInput!): StoryResult! @isAuthenticated
+            }            
+          </script></code></pre>
+        </section>
+        <section data-auto-animate>
+          <h3>GetRandomStoryQuery</h3>
+          <pre><code class="gql" data-trim data-noescape data-line-numbers><script type="text/template">
+            query Query {
+              getRandomStory {
+                success
+                errors
+                story {
+                  title
+                  uuid
+                  imageUrl
+                  created_at
+                  updated_at
+                }
+              }
+            }
+          </script></code></pre>
+        </section>
+        <section data-auto-animate>
+          <h3>getRandomQuery.spec.js</h3>
+          <pre><code class="js" data-trim data-noescape data-line-numbers><script type="text/template">
+            it("queryRandomStory should return a random story", async () => {
+              const response = await request(global.app).post("/graphql").send(queryData);
+              expect(response.status).toBe(200);
+              expect(response.body.data.getRandomStory.success).toBeTruthy();
+              expect(response.body.data.getRandomStory.errors).toHaveLength(0);
+              expect(response.body.data.getRandomStory.story).toMatchObject({ title: "a test story", imageUrl: "https://picsum.photos/300" });
+            });
+          </script></code></pre>
+        </section>
+        <section data-auto-animate>
+          <h3>story.resolver.js</h3>
+          <pre><code class="gql" data-trim data-noescape data-line-numbers><script type="text/template">
+            const StoryResolver = {
+              Query: {
+                getRandomStory: async (parent, args, context, info) => {
+                  try {
+                    return {
+                      success: true,
+                      errors: [],
+                      story: await context.dataSources.storyRepository.getRandomStory(),
+                    };
+                  } catch (err) {
+                    return {
+                      success: false,
+                      errors: [err],
+                      story: null,
+                    };
+                  }
+                },
+              },
+            };
+            
+            export default StoryResolver;
+          </script></code></pre>
+        </section>
+      </section>
+
+      <!-- Backend: Directive -->
+      <section>
+        <section data-auto-animate data-background-size="cover"
+          data-background-image="https://media.giphy.com/media/8tbZH3lN7j560/giphy.gif">
+          <h3 class="title">Custom GraphQL Directive</h3>
+        </section>
+        <section data-auto-animate>
+          <h3>isAuthenticated.graphql</h3>
+          <pre><code class="gql" data-trim data-noescape data-line-numbers><script type="text/template">
+            directive @isAuthenticated on FIELD_DEFINITION
+          </script></code></pre>
+        </section>
+        <section data-auto-animate>
+          <h3>isAuthenticated.directive.js</h3>
+          <pre><code class="js" data-trim data-noescape data-line-numbers="7,10,11"><script type="text/template">
+            import { mapSchema, getDirective, MapperKind } from "@graphql-tools/utils";
+            import { defaultFieldResolver, GraphQLError } from "graphql";
+
+            export default function isAuthenticated(schema, directiveName) {
+              return mapSchema(schema, {
+                // Executes once for each object field in the schema
+                [MapperKind.OBJECT_FIELD]: (fieldConfig) => {
+                  // Check whether this field has the specified directive
+                  const isAuthenticatedDirective = getDirective(schema, fieldConfig, directiveName)?.[0];
+
+                  if (isAuthenticatedDirective) {
+                    // Get this field's original resolver
+                    const { resolve = defaultFieldResolver } = fieldConfig;
+
+                    // Replace the original resolver with a function that *first* calls
+                    // the original resolver, then converts its result to upper case
+                    fieldConfig.resolve = async function (source, args, context, info) {
+                      if (!context.user) {
+                        throw new GraphQLError("You are not authenticated");
+                      }
+                      const result = await resolve(source, args, context, info);
+
+                      return result;
+                    };
+                    return fieldConfig;
+                  }
+                },
+              });
+            } 
+          </script></code></pre>
+        </section>
+      </section>
+
+      <!-- Frontend -->
+      <section>
+        <section data-auto-animate data-background-size="cover"
+          data-background-image="https://media.giphy.com/media/OBPQz329RdKXS/giphy.gif">
+          <h3 class="title">GrapQL in React</h3>
+          <small class="white">npm i @apollo/client apollo-link-context</small>
+        </section>
+        <section data-auto-animate>
+          <h3>apollo.js</h3>
+          <pre><code class="js" data-trim data-noescape data-line-numbers><script type="text/template">
+            /* istanbul ignore file */
+            import { ApolloClient, HttpLink, from, InMemoryCache } from "@apollo/client";
+            import { setContext } from "apollo-link-context";
+            import store from "../config/redux";
+            import env, { isDev } from "./env";
+
+            // Set the header based on a fresh token
+            const authLink = setContext((_, { headers }) => {
+              return {
+                headers: {
+                  ...headers,
+                  ...(store.getState().user.user && {
+                    Authorization: `Bearer ${store.getState().user.user.accessToken}`,
+                  }),
+                },
+              };
+            });
+
+            const apClient = (config) =>
+              new ApolloClient({
+                ...config,
+                link: from([
+                  authLink,
+                  new HttpLink({ uri: `${env.API_ENDPOINT}/graphql` }),
+                ]),
+                cache: new InMemoryCache(),
+                connectToDevTools: isDev,
+                defaultOptions: {
+                  watchQuery: {
+                    fetchPolicy: "cache-and-network",
+                  },
+                },
+              });
+
+            export default apClient;
+          </script></code></pre>
+        </section>
+        <section data-auto-animate>
+          <h3>testUtils.js</h3>
+          <pre><code class="jsx" data-trim data-noescape data-line-numbers="2,9-22, 25-31"><script type="text/template">
+            /* istanbul ignore file */
+            import { ApolloProvider } from "@apollo/client";
+            import { ThemeProvider } from "@emotion/react";
+            import React from "react";
+            import { BrowserRouter } from "react-router-dom";
+            import defaultTheme from "./themes/default";
+            import { Provider } from "react-redux";
+            import store from "./config/redux";
+            import apClient from "./config/apollo";
+            
+            const noCacheApolloConfig = {
+              defaultOptions: {
+                watchQuery: {
+                  fetchPolicy: "no-cache",
+                  errorPolicy: "ignore",
+                },
+                query: {
+                  fetchPolicy: "no-cache",
+                  errorPolicy: "all",
+                },
+              },
+            };
+            
+            export const AllProviders = ({ children }) => (
+              <ApolloProvider client={apClient(noCacheApolloConfig)}>
+                <ThemeProvider theme={defaultTheme}>
+                  <Provider store={store}>
+                    <BrowserRouter>{children}</BrowserRouter>
+                  </Provider>
+                </ThemeProvider>
+              </ApolloProvider>
+            );            
+          </script></code></pre>
+        </section>
+        <section data-auto-animate>
+          <h3>App.js</h3>
+          <pre><code class="jsx" data-trim data-noescape data-line-numbers="9,10,16-24"><script type="text/template">
+            import "./App.less";
+            import { ThemeProvider } from "@emotion/react";
+            import defaultTheme from "./themes/default";
+            import RootRoutes from "./routes/root.routes";
+            import { Provider } from "react-redux";
+            import store from "./config/redux";
+            import { PersistGate } from "redux-persist/integration/react";
+            import { persistStore } from "redux-persist";
+            import { ApolloProvider } from "@apollo/client";
+            import apClient from "./config/apollo";
+
+            const persistor = persistStore(store);
+
+            export default function App() {
+              return (
+                <ApolloProvider client={apClient()}>
+                  <ThemeProvider theme={defaultTheme}>
+                    <Provider store={store}>
+                      <PersistGate loading={null} persistor={persistor}>
+                        <RootRoutes />
+                      </PersistGate>
+                    </Provider>
+                  </ThemeProvider>
+                </ApolloProvider>
+              );
+            }
+
+          </script></code></pre>
+        </section>
+        <section data-auto-animate>
+          <h3>mockRequests.js</h3>
+          <pre><code class="jsx" data-trim data-noescape data-line-numbers><script type="text/template">
+            graphql.query("GetRandomStoryQuery", (req, res, ctx) =>
+              res(
+                ctx.data({
+                  getRandomStory: { story: mockStories[0], success: true, errors: null },
+                })
+              )
+            ),
+            graphql.mutation("CreateStoryMutation", (req, res, ctx) =>
+              res(
+                ctx.data({
+                  createStory: { story: mockStories[0], success: true, errors: null },
+                })
+              )
+            ),
+          </script></code></pre>
+        </section>
+        <section data-auto-animate>
+          <h3>getRandomStoryQuery.js</h3>
+          <pre><code class="js" data-trim data-noescape data-line-numbers><script type="text/template">
+            import { gql } from "@apollo/client";
+
+            export default gql`
+              query GetRandomStoryQuery {
+                getRandomStory {
+                  success
+                  story {
+                    title
+                    imageUrl
+                    uuid
+                    created_at
+                    updated_at
+                  }
+                  errors
+                }
+              }
+            `;
+          </script></code></pre>
+        </section>
+
+        <section data-auto-animate>
+          <h3>HomeView.js</h3>
+          <pre><code class="jsx" data-trim data-noescape data-line-numbers="6, 9,10,25,26,29,30,32,41"><script type="text/template">
+            import styled from "@emotion/styled";
+            import Story from "./components/Story";
+            import { Button, Space } from "antd";
+            import { Link } from "react-router-dom";
+            import { RouteName } from "../../routes/routesnames";
+            import { useEffect } from "react";
+            import { useDispatch } from "react-redux";
+            import { resetUser } from "../../user/userReducer";
+            import { useLazyQuery } from "@apollo/client";
+            import getRandomStoryQuery from "./gql/getRandomStory.query";
+
+            const StoryContainer = styled.div`
+              display: flex;
+              flex-direction: column;
+              justify-content: center;
+              align-items: center;
+              > div {
+                marign: 1rem;
+              }
+            `;
+
+            export default function HomeView() {
+              const dispatch = useDispatch();
+
+              const [getRandomStory, { loading, error, data }] =
+                useLazyQuery(getRandomStoryQuery);
+
+              useEffect(() => {
+                getRandomStory();
+              }, [getRandomStory]);
+
+              const handleRandom = () => getRandomStory();
+              const handleLogout = () => dispatch(resetUser());
+
+              if (loading || !data) {
+                return <div>Loading...</div>;
+              }
+
+              return (
+                <StoryContainer>
+                  <Story story={data.getRandomStory.story} />
+                  <div style={{ marginTop: "30px" }}>
+                    <Space align="center">
+                      <Button type="primary" onClick={handleRandom}>
+                        show me another one
+                      </Button>
+                      <span>or</span>
+                      <Link to={`${RouteName.HOME}/create`}>
+                        <Button type="primary">add one yourself</Button>
+                      </Link>
+                      <span>or</span>
+                      <Button type="ghost" onClick={handleLogout}>
+                        Logout
+                      </Button>
+                    </Space>
+                  </div>
+                </StoryContainer>
+              );
+            }
+
+          </script></code></pre>
+        </section>
+        <section data-auto-animate>
+          <h3>HomeCreateView.js</h3>
+          <pre><code class="jsx" data-trim data-noescape data-line-numbers><script type="text/template">
+            import { Form, message } from "antd";
+            import HomeFormFields from "./components/HomeFormFields";
+            import { useMutation } from "@apollo/client";
+            import createStoryMutation from "./gql/createStory.mutation.query";
+            import { useNavigate } from "react-router-dom";
+            import { RouteName } from "../../routes/routesnames";
+
+            export default function HomeCreateView() {
+              const navigate = useNavigate();
+
+              const handleFinish = async (values) => {
+                const input = {
+                  title: values.title,
+                  imageUrl: "https://picsum.photos/600",
+                };
+
+                try {
+                  await createThreeasset({ variables: { input } });
+                  message.success("Story created!");
+                  navigate(RouteName.HOME);
+                } catch (err) {
+                  console.log("err", err);
+                  message.error("Could not store story");
+                }
+              };
+
+              const [createThreeasset, { data, error, loading }] =
+                useMutation(createStoryMutation);
+
+              return (
+                <Form
+                  labelCol={{ span: 8 }}
+                  wrapperCol={{ span: 10 }}
+                  onFinish={handleFinish}
+                >
+                  <HomeFormFields isLoading={loading} />
+                </Form>
+              );
+            }
+
+          </script></code></pre>
+        </section>
+      </section>
+
+      <section>
+        <h3>Links</h3>
+        <ul>
+          <li>
+            <a href="https://github.com/maciossek/crap-stories-react/tree/feature/graphql">Frontend Repo</a>
+          </li>
+          <li>
+            <a href="https://github.com/maciossek/crap-stories-node/tree/feature/graphql">Backend Repo</a>
+          </li>
+          <li>
+            <a href="https://studio.apollographql.com/sandbox/explorer">Apollo Studio</a>
+          </li>
+          <li>
+            <a href="https://www.apollographql.com/">Apollo</a>
+          </li>
+        </ul>
+      </section>
+    </div>
+  </div>
+</body>
+
+</html>
